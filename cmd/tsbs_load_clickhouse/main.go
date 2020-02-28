@@ -26,9 +26,12 @@ var (
 	user     string
 	password string
 
-	logBatches  bool
-	inTableTag  bool
-	hashWorkers bool
+	useHTTP           bool
+	useTSModel        bool
+	logBatches        bool
+	inTableTag        bool
+	hashWorkers       bool
+	usePhyConsistency bool
 
 	debug int
 )
@@ -41,9 +44,12 @@ type insertData struct {
 
 // Global vars
 var (
-	loader         *load.BenchmarkRunner
-	tableCols      map[string][]string
-	tagColumnTypes []string
+	loader           *load.BenchmarkRunner
+	tagCols          map[string][]string
+	tagColumnTypes   []string
+	metricCols       map[string][]string
+	tableCols        map[string][]string
+	tableColumnTypes map[string][]string
 )
 
 // allows for testing
@@ -58,10 +64,13 @@ func init() {
 	pflag.String("user", "default", "User to connect to ClickHouse as")
 	pflag.String("password", "", "Password to connect to ClickHouse")
 
+	pflag.Bool("use-http", false, "Whether to use http driver.")
+	pflag.Bool("use-TimeSeries-model", false, "Whether to use TimeSeries model, default false, use ColumnModel")
 	pflag.Bool("log-batches", false, "Whether to time individual batches.")
 
 	// TODO - This flag could potentially be done as a string/enum with other options besides no-hash, round-robin, etc
 	pflag.Bool("hash-workers", false, "Whether to consistently hash insert data to the same workers (i.e., the data for a particular host always goes to the same worker)")
+	pflag.Bool("use-physical-consistency", false, "Whether to use physical consistency cluster, default false, use logical consistency")
 
 	pflag.Int("debug", 0, "Debug printing (choices: 0, 1, 2). (default 0)")
 
@@ -81,12 +90,19 @@ func init() {
 	user = viper.GetString("user")
 	password = viper.GetString("password")
 
+	useHTTP = viper.GetBool("use-http")
+	useTSModel = viper.GetBool("use-TimeSeries-model")
 	logBatches = viper.GetBool("log-batches")
 	hashWorkers = viper.GetBool("hash-workers")
+	usePhyConsistency = viper.GetBool("use-physical-consistency")
 	debug = viper.GetInt("debug")
 
 	loader = load.GetBenchmarkRunner(config)
 	tableCols = make(map[string][]string)
+	tagCols = make(map[string][]string)
+	metricCols = make(map[string][]string)
+	tableCols = make(map[string][]string)
+	tableColumnTypes = make(map[string][]string)
 }
 
 // loader.Benchmark interface implementation

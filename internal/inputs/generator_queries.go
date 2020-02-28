@@ -10,8 +10,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/akumuli"
 	"github.com/spf13/pflag"
+	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/akumuli"
 	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/cassandra"
 	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/clickhouse"
 	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/cratedb"
@@ -61,8 +61,7 @@ type QueryGeneratorConfig struct {
 	TimescaleUseJSON       bool `mapstructure:"timescale-use-json"`
 	TimescaleUseTags       bool `mapstructure:"timescale-use-tags"`
 	TimescaleUseTimeBucket bool `mapstructure:"timescale-use-time-bucket"`
-
-	ClickhouseUseTags bool `mapstructure:"clickhouse-use-tags"`
+	ClickhouseUseTSModel   bool `mapstructure:"clickhouse-use-time-series-model"`
 
 	MongoUseNaive bool `mapstructure:"mongo-use-native"`
 }
@@ -86,14 +85,13 @@ func (c *QueryGeneratorConfig) AddToFlagSet(fs *pflag.FlagSet) {
 	c.BaseConfig.AddToFlagSet(fs)
 	fs.Uint64("queries", 1000, "Number of queries to generate.")
 	fs.String("query-type", "", "Query type. (Choices are in the use case matrix.)")
-
 	fs.Uint("interleaved-generation-group-id", 0,
 		"Group (0-indexed) to perform round-robin serialization within. Use this to scale up data generation to multiple processes.")
 	fs.Uint("interleaved-generation-groups", 1,
 		"The number of round-robin serialization groups. Use this to scale up data generation to multiple processes.")
 
-	fs.Bool("clickhouse-use-tags", true, "ClickHouse only: Use separate tags table when querying")
 	fs.Bool("mongo-use-naive", true, "MongoDB only: Generate queries for the 'naive' data storage format for Mongo")
+	fs.Bool("clickhouse-use-time-series-model", false, "Clickhouse only: Wether to use time series model to generate queries")
 	fs.Bool("timescale-use-json", false, "TimescaleDB only: Use separate JSON tags table when querying")
 	fs.Bool("timescale-use-tags", true, "TimescaleDB only: Use separate tags table when querying")
 	fs.Bool("timescale-use-time-bucket", true, "TimescaleDB only: Use time bucket. Set to false to test on native PostgreSQL")
@@ -210,7 +208,7 @@ func (g *QueryGenerator) initFactories() error {
 	}
 
 	clickhouse := &clickhouse.BaseGenerator{
-		UseTags: g.config.ClickhouseUseTags,
+		UseTSModel: g.config.ClickhouseUseTSModel,
 	}
 	if err := g.addFactory(FormatClickhouse, clickhouse); err != nil {
 		return err

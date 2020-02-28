@@ -10,7 +10,7 @@ import (
 
 // BaseGenerator contains settings specific for ClickHouse.
 type BaseGenerator struct {
-	UseTags bool
+	UseTSModel bool
 }
 
 // GenerateEmptyQuery returns an empty query.ClickHouse.

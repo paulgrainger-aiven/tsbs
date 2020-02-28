@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	_ "github.com/mailru/go-clickhouse" // _ "github.com/mailru/go-clickhouse"
 )
 
 // loader.DBCreator interface implementation
@@ -110,17 +111,12 @@ func (d *dbCreator) RemoveOldDB(dbName string) error {
 func (d *dbCreator) CreateDB(dbName string) error {
 	// Connect to ClickHouse in general and CREATE DATABASE
 	db := sqlx.MustConnect(dbType, getConnectString(false))
-	sql := fmt.Sprintf("CREATE DATABASE %s", dbName)
+	defer db.Close()
+	sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", dbName)
 	_, err := db.Exec(sql)
 	if err != nil {
 		panic(err)
 	}
-	db.Close()
-	db = nil
-
-	// Connect to specified database within ClickHouse
-	db = sqlx.MustConnect(dbType, getConnectString(true))
-	defer db.Close()
 
 	// d.tags content:
 	//tags,hostname,region,datacenter,rack,os,arch,team,service,service_version,service_environment
@@ -135,23 +131,264 @@ func (d *dbCreator) CreateDB(dbName string) error {
 		return fmt.Errorf("input header in wrong format. got '%s', expected 'tags'", parts[0])
 	}
 	tagNames, tagTypes := extractTagNamesAndTypes(parts[1:])
-	createTagsTable(db, tagNames, tagTypes)
-	tableCols["tags"] = tagNames
-	tagColumnTypes = tagTypes
 
-	// d.cols content are lines (metrics descriptions) as:
+	// d.Cols content are lines (metrics descriptions) as:
 	// cpu,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_steal,usage_guest,usage_guest_nice
 	// disk,total,free,used,used_percent,inodes_total,inodes_free,inodes_used
 	// nginx,accepts,active,handled,reading,requests,waiting,writing
 	// generalised description:
 	// tableName,fieldName1,...,fieldNameX
-	for _, cols := range d.cols {
-		// cols content:
-		// cpu,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_steal,usage_guest,usage_guest_nice
-		createMetricsTable(db, strings.Split(strings.TrimSpace(cols), ","))
+
+	// cpu content:
+	// cpu,usage_user,usage_system,usage_idle,usage_nice,usage_iowait,usage_irq,usage_softirq,usage_steal,usage_guest,usage_guest_nice
+	cpu_content := d.cols[0]
+	cpu_infos := strings.Split(strings.TrimSpace(cpu_content), ",")
+	cpuMetricNames := []string{}
+	cpuMetricNames = append(cpuMetricNames, cpu_infos[1:]...)
+	cpuMetricTypes := make([]string, len(cpuMetricNames))
+
+	for i := 0; i < len(cpuMetricNames); i++ {
+		cpuMetricTypes[i] = "Nullable(Float64)"
+	}
+
+	if !useTSModel {
+		createCpuTagMetricTable(db, cpuMetricNames, tagNames, tagTypes)
+
+		tagCols["cpu_tags_metrics_logical_distributed"] = tagNames
+		tagColumnTypes = tagTypes
+		metricCols["cpu_tags_metrics_logical_distributed"] = cpuMetricNames
+		tableCols["cpu_tags_metrics_logical_distributed"] = append(tagNames, cpuMetricNames...)
+		tableColumnTypes["cpu_tags_metrics_logical_distributed"] = append(tagTypes, cpuMetricTypes...)
+	} else {
+		createTSTable(db, tagNames, tagTypes)
+
+		tagCols["cpu_tags_metrics"] = tagNames
+		tagColumnTypes = tagTypes
+		metricCols["cpu_tags_metrics"] = cpuMetricNames
 	}
 
 	return nil
+}
+
+func createCpuTagMetricTable(db *sqlx.DB, metricColNames []string, tagNames, tagTypes []string) {
+	localTableQuery, distributedTableQuery := generateCreateTableQuery(db, metricColNames, tagNames, tagTypes)
+	if debug > 0 {
+		fmt.Println(localTableQuery)
+		fmt.Println(distributedTableQuery)
+	}
+
+	_, err := db.Exec(localTableQuery)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(distributedTableQuery)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func generateCreateTableQuery(db *sqlx.DB, metricColNames []string, tagNames, tagTypes []string) (string, string) {
+	if len(tagNames) != len(tagTypes) {
+		panic("wrong number of tag names and tag types")
+	}
+
+	// tags info
+	tagColumnDefinitions := make([]string, len(tagNames))
+	tagColumnName := make([]string, len(tagNames))
+	for i, tagName := range tagNames {
+		tagType := serializedTypeToClickHouseType(tagTypes[i])
+		tagColumnDefinitions[i] = fmt.Sprintf("%s %s", tagName, tagType)
+		tagColumnName[i] = fmt.Sprintf("%s", tagName)
+	}
+
+	tagsCols := strings.Join(tagColumnDefinitions, ",\n")
+	key := strings.Join(tagColumnName, ",")
+
+	// metricColsWithType - metricColName specifications with type. Ex.: "cpu_usage Nullable(Float64)"
+	metricColsWithType := []string{}
+	for _, metricColName := range metricColNames {
+		if len(metricColName) == 0 {
+			// Skip nameless columns
+			continue
+		}
+		metricColsWithType = append(metricColsWithType, fmt.Sprintf("%s Nullable(Float64)", metricColName))
+	}
+
+	metricCols := strings.Join(metricColsWithType, ",\n")
+
+	localTable := fmt.Sprintf(
+		"CREATE TABLE %s.cpu_tags_metrics(\n"+
+			"time DateTime DEFAULT now(),\n"+
+			"%s,\n"+
+			"%s"+
+			") ENGINE = MergeTree() PARTITION BY toYYYYMM(time) ORDER BY (%s)",
+		loader.DBName,
+		tagsCols,
+		metricCols,
+		key)
+
+	consistency := "logical_consistency_cluster"
+	if usePhyConsistency {
+		consistency = "physical_consistency_cluster"
+		localTable = fmt.Sprintf(
+			"CREATE TABLE %s.cpu_tags_metrics(\n"+
+				"time DateTime DEFAULT now(),\n"+
+				"%s,\n"+
+				"%s"+
+				") ENGINE = ReplicatedMergeTree('{namespace}/%s/cpu_tags_metrics', '{replica}') PARTITION BY toYYYYMM(time) ORDER BY (%s)",
+			loader.DBName,
+			tagsCols,
+			metricCols,
+			loader.DBName,
+			key)
+	}
+
+	distributTable := fmt.Sprintf(
+		"CREATE TABLE %s.cpu_tags_metrics_logical_distributed(\n"+
+			"time DateTime DEFAULT now(),\n"+
+			"%s,\n"+
+			"%s"+
+			") ENGINE = Distributed(%s, %s, cpu_tags_metrics, rand())",
+		loader.DBName,
+		tagsCols,
+		metricCols,
+		consistency,
+		loader.DBName)
+
+	return localTable, distributTable
+}
+
+// createTSTable create time series table
+func createTSTable(db *sqlx.DB, tagNames, tagTypes []string) {
+	insertTable, materializedTable, table, distributedTable, queryTable, calcQueryTable := genereateTSTableQuery(db, tagNames, tagTypes)
+	if debug > 0 {
+		fmt.Println(insertTable)
+		fmt.Println(materializedTable)
+		fmt.Println(table)
+		fmt.Println(distributedTable)
+		fmt.Println(queryTable)
+		fmt.Println(calcQueryTable)
+	}
+
+	_, err := db.Exec(insertTable)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(materializedTable)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(table)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(distributedTable)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(queryTable)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec(calcQueryTable)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func genereateTSTableQuery(db *sqlx.DB, tagNames, tagTypes []string) (string, string, string, string, string, string) {
+	if len(tagNames) != len(tagTypes) {
+		panic("wrong number of tag names and tag types")
+	}
+
+	// tags info
+	tagColumnDefinitions := make([]string, len(tagNames))
+	tagColumnName := make([]string, len(tagNames))
+	for i, tagName := range tagNames {
+		tagType := serializedTypeToClickHouseType(tagTypes[i])
+		tagColumnDefinitions[i] = fmt.Sprintf("%s %s", tagName, tagType)
+		tagColumnName[i] = fmt.Sprintf("%s", tagName)
+	}
+
+	tagsCols := strings.Join(tagColumnDefinitions, ",\n")
+	key := strings.Join(tagColumnName, ",")
+
+	insertTable := fmt.Sprintf(
+		"CREATE TABLE %s.cpu_tags_metrics(\n"+
+			"time DateTime DEFAULT now(),\n"+
+			"metric_name String,\n"+
+			"%s,\n"+
+			"value Float64"+
+			") ENGINE = Null",
+		loader.DBName,
+		tagsCols)
+
+	materializedTable := fmt.Sprintf(
+		"CREATE MATERIALIZED VIEW %s.mate_view_cpu_tags_metrics\n"+
+			"TO %s.cpu_tags_metrics_ts AS SELECT\n"+
+			"toStartOfInterval(time, toIntervalMinute(30)) AS time_series_interval,\n"+
+			"metric_name,\n"+
+			"%s,\n"+
+			"groupArrayState((time, value)) AS time_series\n"+
+			"FROM %s.cpu_tags_metrics\n"+
+			"GROUP BY time_series_interval, metric_name, %s;", loader.DBName, loader.DBName, key, loader.DBName, key)
+
+	table := fmt.Sprintf(
+		"CREATE TABLE %s.cpu_tags_metrics_ts(\n"+
+			"time_series_interval DateTime,\n"+
+			"metric_name LowCardinality(String),\n"+
+			"%s, \n"+
+			"time_series AggregateFunction(groupArray, Tuple(DateTime, Float64)))\n"+
+			"ENGINE = AggregatingMergeTree()\n"+
+			"PARTITION BY toYYYYMM(time_series_interval)\n"+
+			"ORDER BY (metric_name, time_series_interval, %s);", loader.DBName, tagsCols, key)
+
+	consistency := "logical_consistency_cluster"
+	if usePhyConsistency {
+		consistency = "physical_consistency_cluster"
+		table = fmt.Sprintf(
+			"CREATE TABLE %s.cpu_tags_metrics_ts(\n"+
+				"time_series_interval DateTime,\n"+
+				"metric_name LowCardinality(String),\n"+
+				"%s, \n"+
+				"time_series AggregateFunction(groupArray, Tuple(DateTime, Float64)))\n"+
+				"ENGINE = ReplicatedAggregatingMergeTree('{namespace}/%s/cpu_tags_metrics_ts', '{replica}')\n"+
+				"PARTITION BY toYYYYMM(time_series_interval)\n"+
+				"ORDER BY (metric_name, time_series_interval, %s);", loader.DBName, tagsCols, loader.DBName, key)
+	}
+
+	distributedTable := fmt.Sprintf(
+		"CREATE TABLE %s.cpu_tags_metrics_ts_distributed(\n"+
+			"time_series_interval DateTime,\n"+
+			"metric_name LowCardinality(String),\n"+
+			"%s,\n"+
+			"time_series AggregateFunction(groupArray, Tuple(DateTime, Float64)))\n"+
+			"ENGINE = Distributed(%s, %s, cpu_tags_metrics_ts, rand());", loader.DBName, tagsCols, consistency, loader.DBName)
+
+	queryTable := fmt.Sprintf(
+		"CREATE VIEW %s.cpu_tags_metrics_ts_query AS\n"+
+			"SELECT\n"+
+			"metric_name,\n"+
+			"%s,\n"+
+			"finalizeAggregation(time_series) AS time_series\n"+
+			"FROM %s.cpu_tags_metrics_ts_distributed;", loader.DBName, key, loader.DBName)
+
+	calcQueryTable := fmt.Sprintf(
+		"CREATE VIEW %s.calc_cpu_tags_metrics_ts_query AS\n"+
+			"SELECT\n"+
+			"metric_name,\n"+
+			"%s,\n"+
+			"time_series.1 AS date_time,  time_series.2 AS value\n"+
+			"FROM %s.cpu_tags_metrics_ts_query\n"+
+			"ARRAY JOIN time_series AS time_series;", loader.DBName, key, loader.DBName)
+
+	return insertTable, materializedTable, table, distributedTable, queryTable, calcQueryTable
 }
 
 // createTagsTable builds CREATE TABLE SQL statement and runs it
@@ -185,12 +422,13 @@ func generateTagsTableQuery(tagNames, tagTypes []string) string {
 	index := "id"
 
 	return fmt.Sprintf(
-		"CREATE TABLE tags(\n"+
+		"CREATE TABLE %s.tags(\n"+
 			"created_date Date     DEFAULT today(),\n"+
 			"created_at   DateTime DEFAULT now(),\n"+
 			"id           UInt32,\n"+
 			"%s"+
 			") ENGINE = MergeTree(created_date, (%s), 8192)",
+		loader.DBName,
 		cols,
 		index)
 }
@@ -229,7 +467,7 @@ func createMetricsTable(db *sqlx.DB, tableSpec []string) {
 	}
 
 	sql := fmt.Sprintf(`
-			CREATE TABLE %s (
+			CREATE TABLE %s.%s (
 				created_date    Date     DEFAULT today(),
 				created_at      DateTime DEFAULT now(),
 				time            String,
@@ -238,6 +476,7 @@ func createMetricsTable(db *sqlx.DB, tableSpec []string) {
 				additional_tags String   DEFAULT ''
 			) ENGINE = MergeTree(created_date, (tags_id, created_at), 8192)
 			`,
+		loader.DBName,
 		tableName,
 		strings.Join(columnsWithType, ","))
 	if debug > 0 {
@@ -249,9 +488,13 @@ func createMetricsTable(db *sqlx.DB, tableSpec []string) {
 	}
 }
 
-// getConnectString() builds connect string to ClickHouse
+// getConnectString() builds HTTP/TCP connect string to ClickHouse
 // db - whether database specification should be added to the connection string
 func getConnectString(db bool) string {
+	if useHTTP {
+		return fmt.Sprintf("http://%s:%s@%s:8123", user, password, host)
+	}
+
 	// connectString: tcp://127.0.0.1:9000?debug=true
 	// ClickHouse ex.:
 	// tcp://host1:9000?username=user&password=qwerty&database=clicks&read_timeout=10&write_timeout=20&alt_hosts=host2:9000,host3:9000
@@ -280,7 +523,7 @@ func extractTagNamesAndTypes(tags []string) ([]string, []string) {
 func serializedTypeToClickHouseType(serializedType string) string {
 	switch serializedType {
 	case "string":
-		return "Nullable(String)"
+		return "LowCardinality(String)"
 	case "float32":
 		return "Nullable(Float32)"
 	case "float64":

@@ -309,9 +309,6 @@ func TestGetUseCaseGenerator(t *testing.T) {
 	bcc.UseTags = true
 	clickt, err := bcc.NewDevops(tsStart, tsEnd, scale)
 	checkType(FormatClickhouse, clickt)
-	if got := clickt.(*clickhouse.Devops).UseTags; got != bcc.UseTags {
-		t.Errorf("clickhous3 UseTags not set correctly: got %v want %v", got, bcc.UseTags)
-	}
 
 	bt := timescaledb.BaseGenerator{}
 	ts, err := bt.NewDevops(tsStart, tsEnd, scale)
