@@ -46,7 +46,7 @@ func init() {
 		"Comma separated list of ClickHouse hosts (pass multiple values for sharding reads on a multi-node setup)")
 	pflag.String("user", "default", "User to connect to ClickHouse as")
 	pflag.String("password", "", "Password to connect to ClickHouse")
-	pflag.Bool("use-http", false, "Whether to use http driver")
+	pflag.Bool("use-http", true, "Whether to use http driver")
 
 	pflag.Parse()
 

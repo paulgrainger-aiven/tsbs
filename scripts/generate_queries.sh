@@ -89,7 +89,6 @@ for QUERY_TYPE in ${QUERY_TYPES}; do
                 --timescale-use-json=${USE_JSON} \
                 --timescale-use-tags=${USE_TAGS} \
                 --timescale-use-time-bucket=${USE_TIME_BUCKET} \
-                --clickhouse-use-tags=${USE_TAGS} \
             | gzip  > ${DATA_FILE_NAME}
 
             trap - EXIT

@@ -64,7 +64,7 @@ func init() {
 	pflag.String("user", "default", "User to connect to ClickHouse as")
 	pflag.String("password", "", "Password to connect to ClickHouse")
 
-	pflag.Bool("use-http", false, "Whether to use http driver.")
+	pflag.Bool("use-http", true, "Whether to use http driver.")
 	pflag.Bool("use-TimeSeries-model", false, "Whether to use TimeSeries model, default false, use ColumnModel")
 	pflag.Bool("log-batches", false, "Whether to time individual batches.")
 

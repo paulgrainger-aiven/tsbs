@@ -11,6 +11,8 @@ fi
 BULK_DATA_DIR=${BULK_DATA_DIR:-"/tmp/bulk_queries"}
 MAX_QUERIES=${MAX_QUERIES:-"0"}
 NUM_WORKERS=${NUM_WORKERS:-$(grep -c ^processor /proc/cpuinfo)}  # match # of cores - worker per core
+DATABASE_USER=${DATABASE_USER:-default}
+DATABASE_PASSWORD=${DATABASE_PASSWORD:-""}
 
 #
 # Run test for one file
@@ -45,6 +47,10 @@ function run_file()
         | $EXE_FILE_NAME \
             --max-queries $MAX_QUERIES \
             --workers $NUM_WORKERS \
+            --hosts=${DATABASE_HOST} \
+            --user=${DATABASE_USER} \
+            --password=${DATABASE_PASSWORD} \
+            --db-name=${DATABASE_NAME} \
         | tee $OUT_FULL_FILE_NAME
 }
 
