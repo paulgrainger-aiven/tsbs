@@ -39,14 +39,10 @@ var fatal = log.Fatalf
 // getConnectString() builds connect string to ClickHouse
 // db - whether database specification should be added to the connection string
 func getConnectString(conf *ClickhouseConfig, db bool) string {
-	// connectString: tcp://127.0.0.1:9000?debug=true
+	// connectString: tcp://127.0.0.1:15330?debug=true
 	// ClickHouse ex.:
-	// tcp://host1:9000?username=user&password=qwerty&database=clicks&read_timeout=10&write_timeout=20&alt_hosts=host2:9000,host3:9000
-	if db {
-		return fmt.Sprintf("tcp://%s:9000?username=%s&password=%s&database=%s", conf.Host, conf.User, conf.Password, conf.DbName)
-	}
-
-	return fmt.Sprintf("tcp://%s:9000?username=%s&password=%s", conf.Host, conf.User, conf.Password)
+	// tcp://host1:15330?username=user&password=qwerty&database=clicks&read_timeout=10&write_timeout=20&alt_hosts=host2:15330,host3:15330
+	return fmt.Sprintf("http://%s:15330?username=%s&password=%s&secure=true&database=default", conf.Host, conf.User, conf.Password)
 }
 
 // Point is a single row of data keyed by which table it belongs

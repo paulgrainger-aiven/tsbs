@@ -24,6 +24,8 @@ var (
 	hostsList []string
 	user      string
 	password  string
+	database_name string
+	useHTTP   bool
 
 	showExplain bool
 )
@@ -39,12 +41,14 @@ func init() {
 	config.AddToFlagSet(pflag.CommandLine)
 	var hosts string
 
-	pflag.String("additional-params", "sslmode=disable",
+	pflag.String("additional-params", "sslmode=enable",
 		"String of additional ClickHouse connection parameters, e.g., 'sslmode=disable'.")
 	pflag.String("hosts", "localhost",
 		"Comma separated list of ClickHouse hosts (pass multiple values for sharding reads on a multi-node setup)")
 	pflag.String("user", "default", "User to connect to ClickHouse as")
 	pflag.String("password", "", "Password to connect to ClickHouse")
+	pflag.String("database_name", "default", "database to connect to in ClickHouse")
+	pflag.Bool("use-http", false, "Whether to use http driver")
 
 	pflag.Parse()
 
@@ -62,6 +66,8 @@ func init() {
 	hosts = viper.GetString("hosts")
 	user = viper.GetString("user")
 	password = viper.GetString("password")
+	database_name = viper.GetString("database_name")
+	useHTTP = viper.GetBool("use-http")
 
 	// Parse comma separated string of hosts and put in a slice (for multi-node setups)
 	for _, host := range strings.Split(hosts, ",") {
@@ -75,7 +81,7 @@ func main() {
 	runner.Run(&query.ClickHousePool, newProcessor)
 }
 
-// Get the connection string for a connection to PostgreSQL.
+// Get the connection string for a connection to ClickHouse.
 
 // If we're running queries against multiple nodes we need to balance the queries
 // across replicas. Each worker is assigned a sequence number -- we'll use that
@@ -83,8 +89,9 @@ func main() {
 func getConnectString(workerNumber int) string {
 	// Round robin the host/worker assignment by assigning a host based on workerNumber % totalNumberOfHosts
 	host := hostsList[workerNumber%len(hostsList)]
-
-	return fmt.Sprintf("tcp://%s:9000?username=%s&password=%s&database=%s", host, user, password, runner.DatabaseName())
+	connect_string := fmt.Sprintf("http://%s:15330?username=%s&password=%s&database=%s&secure=true", host, user, password, database_name)
+        //fmt.Println("[DEBUG] Connecting to ",connect_string)
+	return connect_string 
 }
 
 // prettyPrintResponse prints a Query and its response in JSON format with two
