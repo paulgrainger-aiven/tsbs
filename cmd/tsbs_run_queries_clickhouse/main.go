@@ -24,6 +24,7 @@ var (
 	hostsList []string
 	user      string
 	password  string
+	port      string
 	database_name string
 	useHTTP   bool
 
@@ -66,6 +67,7 @@ func init() {
 	hosts = viper.GetString("hosts")
 	user = viper.GetString("user")
 	password = viper.GetString("password")
+	port = viper.GetString("port")
 	database_name = viper.GetString("database_name")
 	useHTTP = viper.GetBool("use-http")
 

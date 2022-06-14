@@ -16,6 +16,7 @@ type ClickhouseConfig struct {
 	Host     string
 	User     string
 	Password string
+	Port     string
 
 	LogBatches bool
 	InTableTag bool
@@ -42,7 +43,7 @@ func getConnectString(conf *ClickhouseConfig, db bool) string {
 	// connectString: tcp://127.0.0.1:15330?debug=true
 	// ClickHouse ex.:
 	// tcp://host1:15330?username=user&password=qwerty&database=clicks&read_timeout=10&write_timeout=20&alt_hosts=host2:15330,host3:15330
-	return fmt.Sprintf("http://%s:15330?username=%s&password=%s&secure=true&database=default", conf.Host, conf.User, conf.Password)
+	return fmt.Sprintf("http://%s:%s?username=%s&password=%s&secure=true&database=default", conf.Host, conf.Port, conf.User, conf.Password)
 }
 
 // Point is a single row of data keyed by which table it belongs
