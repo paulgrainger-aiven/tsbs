@@ -42,6 +42,7 @@ func init() {
 	conf = &clickhouse.ClickhouseConfig{
 		Host:       viper.GetString("host"),
 		User:       viper.GetString("user"),
+		Port:       viper.GetString("port"),
 		Password:   viper.GetString("password"),
 		LogBatches: viper.GetBool("log-batches"),
 		Debug:      viper.GetInt("debug"),

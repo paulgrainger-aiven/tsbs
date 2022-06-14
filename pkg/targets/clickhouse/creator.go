@@ -54,13 +54,6 @@ func (d *dbCreator) DBExists(dbName string) bool {
 
 // loader.DBCreator interface implementation
 func (d *dbCreator) RemoveOldDB(dbName string) error {
-	db := sqlx.MustConnect(dbType, getConnectString(d.config, false))
-	defer db.Close()
-
-	sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)
-	if _, err := db.Exec(sql); err != nil {
-		panic(err)
-	}
 	return nil
 }
 
@@ -68,11 +61,6 @@ func (d *dbCreator) RemoveOldDB(dbName string) error {
 func (d *dbCreator) CreateDB(dbName string) error {
 	// Connect to ClickHouse in general and CREATE DATABASE
 	db := sqlx.MustConnect(dbType, getConnectString(d.config, false))
-	sql := fmt.Sprintf("CREATE DATABASE %s", dbName)
-	_, err := db.Exec(sql)
-	if err != nil {
-		panic(err)
-	}
 	db.Close()
 	db = nil
 
@@ -100,9 +88,6 @@ func (d *dbCreator) CreateDB(dbName string) error {
 // createTagsTable builds CREATE TABLE SQL statement and runs it
 func createTagsTable(conf *ClickhouseConfig, db *sqlx.DB, tagNames, tagTypes []string) {
 	sql := generateTagsTableQuery(tagNames, tagTypes)
-	if conf.Debug > 0 {
-		fmt.Printf(sql)
-	}
 	_, err := db.Exec(sql)
 	if err != nil {
 		panic(err)
@@ -143,7 +128,9 @@ func createMetricsTable(conf *ClickhouseConfig, db *sqlx.DB, tableName string, f
 				tags_id         UInt32,
 				%s,
 				additional_tags String   DEFAULT ''
-			) ENGINE = MergeTree(created_date, (tags_id, created_at), 8192)
+			) ENGINE = MergeTree()
+			ORDER BY (tags_id, created_at) 
+			PRIMARY KEY (tags_id, created_at)
 			`,
 		tableName,
 		strings.Join(columnsWithType, ","))
@@ -172,7 +159,7 @@ func generateTagsTableQuery(tagNames, tagTypes []string) string {
 
 	cols := strings.Join(tagColumnDefinitions, ",\n")
 
-	index := "id"
+	//index := "id"
 
 	return fmt.Sprintf(
 		"CREATE TABLE tags(\n"+
@@ -180,9 +167,9 @@ func generateTagsTableQuery(tagNames, tagTypes []string) string {
 			"created_at   DateTime DEFAULT now(),\n"+
 			"id           UInt32,\n"+
 			"%s"+
-			") ENGINE = MergeTree(created_date, (%s), 8192)",
-		cols,
-		index)
+			") ENGINE = MergeTree()\n"+
+			"ORDER BY (id, created_at)",
+		cols)
 }
 
 func serializedTypeToClickHouseType(serializedType string) string {

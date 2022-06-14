@@ -52,6 +52,7 @@ type BenchmarkRunnerConfig struct {
 // AddToFlagSet adds command line flags needed by the BenchmarkRunnerConfig to the flag set.
 func (c BenchmarkRunnerConfig) AddToFlagSet(fs *pflag.FlagSet) {
 	fs.String("db-name", "benchmark", "Name of database")
+	fs.String("port", "15330", "Port of database")
 	fs.Uint("batch-size", defaultBatchSize, "Number of items to batch together in a single insert")
 	fs.Uint("workers", 1, "Number of parallel clients inserting")
 	fs.Uint64("limit", 0, "Number of items to insert (0 = all of them).")

@@ -8,7 +8,7 @@ if [[ -z "$EXE_FILE_NAME" ]]; then
 fi
 
 # Default queries folder
-BULK_DATA_DIR=${BULK_DATA_DIR:-"/tmp/bulk_queries"}
+BULK_DATA_DIR=${BULK_DATA_DIR:-~/bulk_queries}
 MAX_QUERIES=${MAX_QUERIES:-"0"}
 NUM_WORKERS=${NUM_WORKERS:-$(grep -c ^processor /proc/cpuinfo)}  # match # of cores - worker per core
 
@@ -45,6 +45,9 @@ function run_file()
         | $EXE_FILE_NAME \
             --max-queries $MAX_QUERIES \
             --workers $NUM_WORKERS \
+	    --user $DATABASE_USER \
+	    --password $DATABASE_PASSWORD \
+	    --hosts $DATABASE_HOST \
         | tee $OUT_FULL_FILE_NAME
 }
 

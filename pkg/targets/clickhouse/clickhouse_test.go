@@ -15,7 +15,7 @@ func TestGetConnectString(t *testing.T) {
 	wantUser := "default"
 	wantPassword := ""
 	wantDB := "benchmark"
-	want := fmt.Sprintf("tcp://%s:9000?username=%s&password=%s&database=%s", wantHost, wantUser, wantPassword, wantDB)
+	want := fmt.Sprintf("tcp://%s:15330?username=%s&password=%s&database=%s&secure", wantHost, wantUser, wantPassword, wantDB)
 
 	connStr := getConnectString(&ClickhouseConfig{
 		Host:     wantHost,
