@@ -8,7 +8,12 @@ BATCH=${BATCH:-50000}
 
 
 # Now that data has been create, lets bring up our clickhouse service
-avn service create --service-type clickhouse --plan $AVN_SERVICE_PLAN --cloud $AVN_SERVICE_CLOUD $AVN_SERVICE_NAME
+avn service create \
+  --service-type clickhouse \
+  --plan $AVN_SERVICE_PLAN \
+  --cloud $AVN_SERVICE_CLOUD \
+  --no-project-vpc \
+  $AVN_SERVICE_NAME
 
 while [ "RUNNING" != $(avn service get $AVN_SERVICE_NAME --format '{state}') ]
 do
