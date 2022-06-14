@@ -159,7 +159,7 @@ func generateTagsTableQuery(tagNames, tagTypes []string) string {
 
 	cols := strings.Join(tagColumnDefinitions, ",\n")
 
-	index := "id"
+	//index := "id"
 
 	return fmt.Sprintf(
 		"CREATE TABLE tags(\n"+
@@ -169,8 +169,7 @@ func generateTagsTableQuery(tagNames, tagTypes []string) string {
 			"%s"+
 			") ENGINE = MergeTree()\n"+
 			"ORDER BY (id, created_at)",
-		cols,
-	    index)
+		cols)
 }
 
 func serializedTypeToClickHouseType(serializedType string) string {
