@@ -43,6 +43,7 @@ Usage is as follows:
 
 ```
 cd scripts
+chmod u+x aiven/*
 ./aiven/generate-clickhouse-iot.sh
 ```
 
