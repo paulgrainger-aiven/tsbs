@@ -26,7 +26,7 @@ cd load
 
 eval $(avn service user-list --format \
   'DATABASE_PASSWORD={password} DATABASE_USER={username}' \
-   clickhouse-demo)
+   ${AVN_SERVICE_NAME})
 
 SERVICE_URI=$(avn service get $AVN_SERVICE_NAME --format '{service_uri}')
 
